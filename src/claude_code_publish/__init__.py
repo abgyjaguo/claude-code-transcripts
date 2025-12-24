@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Convert Claude Code session JSON to a clean mobile-friendly HTML page with pagination."""
 
 import argparse
@@ -700,7 +699,7 @@ def generate_html(json_path, output_dir, github_repo=None):
     print(f"Generated index.html ({total_convs} prompts, {total_pages} pages)")
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         description="Convert Claude Code session JSON to mobile-friendly HTML pages."
     )
