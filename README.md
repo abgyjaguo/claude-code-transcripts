@@ -151,8 +151,9 @@ Convert a specific session file directly:
 claude-code-transcripts json session.json -o output-directory/
 claude-code-transcripts json session.jsonl --open
 ```
+This works with both JSONL files in the `~/.claude/projects/` folder and JSON session files extracted from Claude Code for web.
 
-When using [Claude Code for web](https://claude.ai/code) you can export your session as a `session.json` file using the `teleport` command.
+The `json` command can take a URL to a JSON or JSONL file as an alternative to a path on disk.
 
 ### Converting all sessions
 
