@@ -7,8 +7,39 @@
     <style>{{ css|safe }}</style>
 </head>
 <body>
-    <div class="container">
+    <div class="app-shell">
+        <div id="cct-sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+        <aside class="sidebar" id="cct-sidebar" aria-label="Transcript sidebar">
+            <div class="sidebar-inner">
+                <div class="sidebar-header">
+                    <div class="sidebar-title">Navigation</div>
+                    <button id="cct-sidebar-close" class="sidebar-close-btn" type="button" aria-label="Close sidebar">&times;</button>
+                </div>
+
+                <section class="sidebar-section" aria-label="Filters">
+                    <div class="sidebar-section-title">Filters</div>
+                    <label class="sidebar-toggle"><input type="checkbox" id="cct-filter-user" checked> User</label>
+                    <label class="sidebar-toggle"><input type="checkbox" id="cct-filter-assistant" checked> Assistant</label>
+                    <label class="sidebar-toggle"><input type="checkbox" id="cct-filter-thinking" checked> Thinking</label>
+                    <label class="sidebar-toggle"><input type="checkbox" id="cct-filter-tool-use" checked> Tool calls</label>
+                    <label class="sidebar-toggle"><input type="checkbox" id="cct-filter-tool-result" checked> Tool results</label>
+                </section>
+
+                <section class="sidebar-section" aria-label="Outline">
+                    <div class="sidebar-section-title">Outline</div>
+                    <nav id="cct-outline" class="outline" aria-label="Outline"></nav>
+                </section>
+            </div>
+        </aside>
+
+        <div class="main">
+            <div class="topbar">
+                <button id="cct-sidebar-open" class="sidebar-open-btn" type="button" aria-label="Open sidebar">&#9776;</button>
+            </div>
+            <div class="container">
 {%- block content %}{% endblock %}
+            </div>
+        </div>
     </div>
     <script>{{ js|safe }}</script>
 </body>

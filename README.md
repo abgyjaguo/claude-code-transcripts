@@ -7,6 +7,8 @@
 
 Convert Claude Code and Codex CLI session files (JSON or JSONL) to clean, mobile-friendly HTML pages with pagination.
 
+Generated transcript pages include a left sidebar with persistent filters (user/assistant/thinking/tool calls/results) and an outline for navigation.
+
 [Example transcript](https://static.simonwillison.net/static/2025/claude-code-microjs/index.html) produced using this tool.
 
 Read [A new way to extract detailed transcripts from Claude Code](https://simonwillison.net/2025/Dec/25/claude-code-transcripts/) for background on this project.
