@@ -8,3 +8,20 @@
         {{ messages_html|safe }}
         {{ pagination_html|safe }}
 {%- endblock %}
+
+{% block sidebar %}
+        <aside class="right-sidebar" id="turn-sidebar" aria-label="Turns">
+            <div class="right-sidebar-header">Turns on this page</div>
+            <nav class="turn-list" aria-label="Turn summaries">
+            {%- for turn in turns %}
+                <a class="turn-item" href="#{{ turn.anchor_id }}" data-tool-calls="{{ turn.total_tool_calls }}">
+                    <div class="turn-user">{{ turn.user_preview }}</div>
+                    <div class="turn-meta">{{ turn.tool_meta }}</div>
+                    {%- if turn.assistant_preview %}
+                    <div class="turn-assistant">{{ turn.assistant_preview }}</div>
+                    {%- endif %}
+                </a>
+            {%- endfor %}
+            </nav>
+        </aside>
+{%- endblock %}
