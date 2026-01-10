@@ -569,6 +569,9 @@ def parse_session_file(filepath):
     if _is_antigravity_export_format(data):
         return _parse_antigravity_export(data)
 
+    if _is_kiro_export_data(data):
+        return _parse_kiro_export_data(data)
+
     normalized = _normalize_session_data(data, filepath)
     if isinstance(normalized, dict) and "loglines" in normalized:
         return normalized
@@ -1013,6 +1016,204 @@ def _parse_antigravity_export(data):
                 "message": {"role": role, "content": content},
             }
         )
+
+    return {"loglines": loglines}
+
+
+def _is_kiro_export_data(data):
+    """Detect Kiro /save export JSON (ConversationState).
+
+    Kiro (Amazon Q CLI) persists a conversation state object with a top-level history of paired
+    user/assistant messages.
+    """
+    if not isinstance(data, dict):
+        return False
+    if "loglines" in data:
+        return False
+    if "conversation_id" not in data:
+        return False
+    history = data.get("history")
+    if not isinstance(history, list) or not history:
+        return False
+    first = history[0]
+    if not isinstance(first, dict):
+        return False
+    if "user" not in first or "assistant" not in first:
+        return False
+    if "valid_history_range" not in data or "transcript" not in data:
+        return False
+    return True
+
+
+def _kiro_parse_external_enum(value):
+    """Parse a serde externally-tagged enum value.
+
+    Examples:
+      {"Prompt": {"prompt": "hi"}} -> ("Prompt", {"prompt": "hi"})
+      {"Text": "hello"}           -> ("Text", "hello")
+    """
+    if not isinstance(value, dict) or len(value) != 1:
+        return None, None
+    (variant, payload), *_ = value.items()
+    return variant, payload
+
+
+def _ms_to_iso_z(ms):
+    try:
+        ms_int = int(ms)
+    except (TypeError, ValueError):
+        return ""
+    try:
+        dt = datetime.fromtimestamp(ms_int / 1000.0, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return ""
+    # Match the typical session timestamp style with millisecond precision.
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def _kiro_tool_result_is_error(status):
+    if isinstance(status, str):
+        lowered = status.lower()
+        return ("error" in lowered) or ("fail" in lowered)
+    variant, _payload = _kiro_parse_external_enum(status)
+    if isinstance(variant, str):
+        lowered = variant.lower()
+        return ("error" in lowered) or ("fail" in lowered)
+    return False
+
+
+def _kiro_tool_result_blocks_to_text(blocks):
+    if not isinstance(blocks, list):
+        return ""
+    parts = []
+    for block in blocks:
+        variant, payload = _kiro_parse_external_enum(block)
+        if variant == "Text":
+            if isinstance(payload, str) and payload:
+                parts.append(payload)
+        elif variant == "Json":
+            try:
+                parts.append(json.dumps(payload, indent=2, ensure_ascii=False))
+            except TypeError:
+                parts.append(str(payload))
+        else:
+            if block is None:
+                continue
+            parts.append(str(block))
+    return "\n".join(p for p in parts if p).strip()
+
+
+def _parse_kiro_export_data(data):
+    """Parse Kiro /save export JSON and normalize to {"loglines": [...]}."""
+    loglines = []
+
+    history = data.get("history", [])
+    if not isinstance(history, list):
+        return {"loglines": loglines}
+
+    for entry in history:
+        if not isinstance(entry, dict):
+            continue
+
+        user_msg = entry.get("user") or {}
+        assistant_msg = entry.get("assistant") or {}
+        request_metadata = entry.get("request_metadata") or {}
+
+        user_timestamp = ""
+        if isinstance(user_msg, dict):
+            user_timestamp = user_msg.get("timestamp") or ""
+
+        assistant_timestamp = ""
+        if isinstance(request_metadata, dict):
+            assistant_timestamp = _ms_to_iso_z(
+                request_metadata.get("stream_end_timestamp_ms")
+            )
+
+        # User
+        if isinstance(user_msg, dict):
+            content_variant, content_payload = _kiro_parse_external_enum(
+                user_msg.get("content")
+            )
+            if content_variant == "Prompt" and isinstance(content_payload, dict):
+                prompt = content_payload.get("prompt", "")
+                loglines.append(
+                    {
+                        "type": "user",
+                        "timestamp": user_timestamp,
+                        "message": {"role": "user", "content": prompt},
+                    }
+                )
+            elif content_variant in (
+                "ToolUseResults",
+                "CancelledToolUses",
+            ) and isinstance(content_payload, dict):
+                tool_use_results = content_payload.get("tool_use_results", [])
+                content_blocks = []
+                if isinstance(tool_use_results, list):
+                    for result in tool_use_results:
+                        if not isinstance(result, dict):
+                            continue
+                        tool_use_id = result.get("tool_use_id", "")
+                        output_text = _kiro_tool_result_blocks_to_text(
+                            result.get("content", [])
+                        )
+                        content_blocks.append(
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": tool_use_id,
+                                "content": output_text,
+                                "is_error": _kiro_tool_result_is_error(
+                                    result.get("status")
+                                ),
+                            }
+                        )
+
+                loglines.append(
+                    {
+                        "type": "user",
+                        "timestamp": user_timestamp,
+                        "message": {"role": "user", "content": content_blocks},
+                    }
+                )
+
+        # Assistant
+        assistant_variant, assistant_payload = _kiro_parse_external_enum(assistant_msg)
+        if assistant_variant in ("Response", "ToolUse") and isinstance(
+            assistant_payload, dict
+        ):
+            content_blocks = []
+            assistant_text = assistant_payload.get("content", "")
+            if assistant_text:
+                content_blocks.append({"type": "text", "text": assistant_text})
+
+            if assistant_variant == "ToolUse":
+                tool_uses = assistant_payload.get("tool_uses", [])
+                if isinstance(tool_uses, list):
+                    for tool_use in tool_uses:
+                        if not isinstance(tool_use, dict):
+                            continue
+                        tool_name = (
+                            tool_use.get("name") or tool_use.get("orig_name") or ""
+                        )
+                        tool_input = tool_use.get("args", {})
+                        if not isinstance(tool_input, dict):
+                            tool_input = {}
+                        content_blocks.append(
+                            {
+                                "type": "tool_use",
+                                "id": tool_use.get("id", ""),
+                                "name": tool_name,
+                                "input": tool_input,
+                            }
+                        )
+
+            loglines.append(
+                {
+                    "type": "assistant",
+                    "timestamp": assistant_timestamp,
+                    "message": {"role": "assistant", "content": content_blocks},
+                }
+            )
 
     return {"loglines": loglines}
 
