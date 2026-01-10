@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "title": "Sample Cursor export",
+  "createdAt": "2026-01-01T12:00:00.000Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello from **Cursor** export",
+      "timestamp": "2026-01-01T12:00:01.000Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi!\n\nHere is some code:\n\n```python\nprint('hi')\n```\n",
+      "timestamp": "2026-01-01T12:00:02.000Z"
+    },
+    {
+      "role": "user",
+      "content": "Thanks",
+      "timestamp": "2026-01-01T12:00:03.000Z"
+    },
+    {
+      "role": "assistant",
+      "content": "You're welcome.",
+      "timestamp": "2026-01-01T12:00:04.000Z"
+    }
+  ]
+}
