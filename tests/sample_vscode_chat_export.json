@@ -1,0 +1,20 @@
+{
+  "requests": [
+    {
+      "timestamp": "2025-01-01T10:00:00.000Z",
+      "message": { "text": "Hello from VS Code export" },
+      "response": [
+        { "value": "Here is a response with **markdown**." },
+        { "value": "\n\n```python\nprint('hi')\n```" }
+      ]
+    },
+    {
+      "timestamp": "2025-01-01T10:00:05.000Z",
+      "message": { "text": "Second question" },
+      "response": [
+        { "value": "Second answer" }
+      ]
+    }
+  ]
+}
+

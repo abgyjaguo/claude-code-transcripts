@@ -548,35 +548,41 @@ def _generate_master_index(projects, output_dir):
 def parse_session_file(filepath):
     """Parse a session file and return normalized data.
 
-    Supports both JSON and JSONL formats.
+    Supports JSON, JSONL, and common IDE chat export formats (JSON/Markdown).
     Returns a dict with 'loglines' key containing the normalized entries.
     """
     filepath = Path(filepath)
 
     if filepath.suffix == ".jsonl":
         return _parse_jsonl_file(filepath)
-    else:
-        # Standard JSON format (with additional supported export formats)
-        with open(filepath, "r", encoding="utf-8") as f:
-            data = json.load(f)
+    if filepath.suffix.lower() in (".md", ".markdown", ".txt"):
+        return _parse_markdown_chat_export(filepath)
 
-        # Already in normalized format
-        if isinstance(data, dict) and "loglines" in data:
-            return data
+    # Standard JSON format (with additional supported export formats)
+    with open(filepath, "r", encoding="utf-8") as f:
+        data = json.load(f)
 
-        # Cursor chat export JSON -> normalized loglines
-        cursor_data = _parse_cursor_export(data, filepath)
-        if cursor_data is not None:
-            return cursor_data
-
-        # Some exports may be a bare list of loglines
-        if isinstance(data, list) and all(
-            isinstance(item, dict) and {"type", "timestamp", "message"}.issubset(item)
-            for item in data
-        ):
-            return {"loglines": data}
-
+    # Already in normalized format
+    if isinstance(data, dict) and "loglines" in data:
         return data
+
+    normalized = _normalize_session_data(data, filepath)
+    if isinstance(normalized, dict) and "loglines" in normalized:
+        return normalized
+
+    # Cursor chat export JSON -> normalized loglines
+    cursor_data = _parse_cursor_export(data, filepath)
+    if cursor_data is not None:
+        return cursor_data
+
+    # Some exports may be a bare list of loglines
+    if isinstance(data, list) and all(
+        isinstance(item, dict) and {"type", "timestamp", "message"}.issubset(item)
+        for item in data
+    ):
+        return {"loglines": data}
+
+    return data
 
 
 def _format_timestamp(dt):
@@ -747,6 +753,121 @@ def _parse_cursor_export(data, filepath):
         else:
             message = {"role": "assistant", "content": [{"type": "text", "text": text}]}
 
+        loglines.append({"type": role, "timestamp": ts, "message": message})
+
+    return {"loglines": loglines}
+
+
+def _normalize_session_data(data, filepath=None):
+    """Normalize supported session/export formats into {'loglines': [...]}."""
+    if isinstance(data, dict) and isinstance(data.get("loglines"), list):
+        return data
+    if _is_vscode_chat_export_json(data):
+        return _parse_vscode_chat_export_json(data, filepath=filepath)
+    return data
+
+
+def _is_vscode_chat_export_json(data):
+    return isinstance(data, dict) and isinstance(data.get("requests"), list)
+
+
+def _parse_vscode_chat_export_json(data, filepath=None):
+    """Parse VS Code-style "Chat: Export Chat" JSON into normalized loglines."""
+    requests = data.get("requests") if isinstance(data, dict) else None
+    if not isinstance(requests, list) or not requests:
+        return data
+
+    session_dt = None
+    if isinstance(data, dict) and filepath is not None:
+        for key in ("createdAt", "created_at", "created", "timestamp"):
+            session_dt = _coerce_datetime(data.get(key))
+            if session_dt is not None:
+                break
+    if session_dt is None and filepath is not None:
+        session_dt = datetime.fromtimestamp(filepath.stat().st_mtime, tz=timezone.utc)
+    if session_dt is None:
+        session_dt = datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+    loglines = []
+    for idx, req in enumerate(requests):
+        if not isinstance(req, dict):
+            continue
+
+        dt = _coerce_datetime(req.get("timestamp"))
+        if dt is None:
+            dt = session_dt + timedelta(seconds=idx * 2)
+        user_ts = _format_timestamp(dt)
+        assistant_ts = _format_timestamp(dt + timedelta(milliseconds=1))
+
+        user_text = None
+        msg = req.get("message")
+        if isinstance(msg, dict):
+            user_text = msg.get("text") or msg.get("value")
+        if isinstance(user_text, str):
+            user_text = user_text.strip()
+
+        if user_text:
+            loglines.append(
+                {"type": "user", "timestamp": user_ts, "message": {"role": "user", "content": user_text}}
+            )
+
+        response = req.get("response")
+        parts = []
+        if isinstance(response, list):
+            for item in response:
+                if isinstance(item, dict) and isinstance(item.get("value"), str):
+                    parts.append(item["value"])
+                elif isinstance(item, str):
+                    parts.append(item)
+
+        assistant_text = "".join(parts).strip()
+        if assistant_text:
+            message = {"role": "assistant", "content": [{"type": "text", "text": assistant_text}]}
+            loglines.append({"type": "assistant", "timestamp": assistant_ts, "message": message})
+
+    return {"loglines": loglines}
+
+
+def _parse_markdown_chat_export(filepath):
+    """Parse simple Markdown chat exports (Cursor/Windsurf/Augment) into loglines."""
+    text = Path(filepath).read_text(encoding="utf-8")
+    lines = text.splitlines()
+
+    messages = []
+    role = None
+    buf = []
+
+    def flush():
+        nonlocal buf, role
+        content = "\n".join(buf).strip()
+        buf = []
+        if not role or not content:
+            return
+        messages.append((role, content))
+
+    for line in lines:
+        stripped = line.strip()
+        m = re.match(r"^##\s*(user|assistant)\s*$", stripped, re.IGNORECASE)
+        if m:
+            flush()
+            role = m.group(1).lower()
+            continue
+
+        if role is None:
+            continue
+
+        buf.append(line)
+
+    flush()
+
+    loglines = []
+    base = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    for idx, (role, content) in enumerate(messages):
+        ts = _format_timestamp(base + timedelta(seconds=idx))
+        if role == "user":
+            message = {"role": "user", "content": content}
+        else:
+            message = {"role": "assistant", "content": [{"type": "text", "text": content}]}
         loglines.append({"type": role, "timestamp": ts, "message": message})
 
     return {"loglines": loglines}
