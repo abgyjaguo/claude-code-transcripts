@@ -566,6 +566,9 @@ def parse_session_file(filepath):
     if isinstance(data, dict) and "loglines" in data:
         return data
 
+    if _is_antigravity_export_format(data):
+        return _parse_antigravity_export(data)
+
     normalized = _normalize_session_data(data, filepath)
     if isinstance(normalized, dict) and "loglines" in normalized:
         return normalized
@@ -754,6 +757,262 @@ def _parse_cursor_export(data, filepath):
             message = {"role": "assistant", "content": [{"type": "text", "text": text}]}
 
         loglines.append({"type": role, "timestamp": ts, "message": message})
+
+    return {"loglines": loglines}
+
+
+def _antigravity_extract_messages(data):
+    if not isinstance(data, dict):
+        return []
+
+    # Most common shapes
+    for key in ("contents", "messages"):
+        value = data.get(key)
+        if isinstance(value, list):
+            return value
+
+    # Nested shapes
+    conversation = data.get("conversation")
+    if isinstance(conversation, dict):
+        for key in ("contents", "messages"):
+            value = conversation.get(key)
+            if isinstance(value, list):
+                return value
+
+    return []
+
+
+def _is_antigravity_export_format(data):
+    """Detect an Antigravity transcript/export JSON file.
+
+    This is a best-effort parser for a Gemini-style role+parts export, e.g.
+    - {"contents": [{"role": "...", "parts": [...]}]}
+    - {"messages": [{"role": "...", "parts": [...]}]}
+
+    Where parts may include "text", "functionCall" and "functionResponse" objects.
+    """
+    if not isinstance(data, dict):
+        return False
+
+    messages = _antigravity_extract_messages(data)
+    if not messages:
+        return False
+
+    # If the exporter explicitly labels itself, trust that.
+    if str(data.get("exporter", "")).lower() == "antigravity":
+        return True
+
+    # Heuristic: look for role+parts with function call/response markers.
+    for msg in messages[:10]:
+        if not isinstance(msg, dict):
+            continue
+        if "role" not in msg:
+            continue
+
+        parts = msg.get("parts")
+        if parts is None:
+            parts = msg.get("content")
+        if not isinstance(parts, list):
+            continue
+
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            if any(k in part for k in ("functionCall", "functionResponse")):
+                return True
+            if "text" in part and isinstance(part.get("text"), str):
+                return True
+
+    return False
+
+
+def _map_antigravity_tool_to_claude(tool_name):
+    mapping = {
+        "shell_command": "Bash",
+        "shell": "Bash",
+        "bash": "Bash",
+        "read_file": "Read",
+        "write_file": "Write",
+        "edit_file": "Edit",
+        "search_files": "Grep",
+        "list_files": "Glob",
+        "todo_write": "TodoWrite",
+        "todowrite": "TodoWrite",
+    }
+    return mapping.get(tool_name, tool_name)
+
+
+def _parse_antigravity_tool_input(args):
+    if isinstance(args, dict):
+        return args
+    if isinstance(args, str):
+        try:
+            parsed = json.loads(args)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+    return {}
+
+
+def _parse_antigravity_tool_result_content(response):
+    if response is None:
+        return ""
+    if isinstance(response, str):
+        return response
+    if isinstance(response, dict):
+        for key in ("output", "content", "text", "result", "stdout"):
+            value = response.get(key)
+            if isinstance(value, str):
+                return value
+        return json.dumps(response, indent=2, ensure_ascii=False)
+    return str(response)
+
+
+def _parse_antigravity_export(data):
+    """Parse an Antigravity export JSON object into Claude Code's loglines."""
+    messages = _antigravity_extract_messages(data)
+    loglines = []
+
+    tool_call_counter = 0
+    last_tool_id = None
+    pending_tool_ids_by_name = {}
+
+    def allocate_tool_id(tool_name, provided_id=None):
+        nonlocal tool_call_counter, last_tool_id
+
+        if provided_id:
+            tool_id = str(provided_id)
+        else:
+            tool_call_counter += 1
+            tool_id = f"antigravity_call_{tool_call_counter}"
+
+        last_tool_id = tool_id
+        pending_tool_ids_by_name.setdefault(tool_name, []).append(tool_id)
+        return tool_id
+
+    def resolve_tool_id_for_response(tool_name):
+        nonlocal last_tool_id, tool_call_counter
+
+        if tool_name and pending_tool_ids_by_name.get(tool_name):
+            return pending_tool_ids_by_name[tool_name].pop(0)
+        if last_tool_id:
+            return last_tool_id
+        tool_call_counter += 1
+        return f"antigravity_call_{tool_call_counter}"
+
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+
+        raw_role = msg.get("role", "")
+        role_lower = str(raw_role).lower()
+        if role_lower in ("user", "human"):
+            role = "user"
+        elif role_lower in ("assistant", "model", "bot"):
+            role = "assistant"
+        else:
+            continue
+
+        timestamp = (
+            msg.get("createTime")
+            or msg.get("timestamp")
+            or msg.get("time")
+            or msg.get("created_at")
+            or ""
+        )
+
+        parts = msg.get("parts")
+        if parts is None:
+            parts = msg.get("content")
+
+        # Normalize a simple string into a single text part
+        if isinstance(parts, str):
+            parts = [{"text": parts}]
+        if not isinstance(parts, list):
+            parts = []
+
+        sequential_parts = []
+        for part in parts:
+            if isinstance(part, str):
+                sequential_parts.append(("text", part))
+                continue
+            if not isinstance(part, dict):
+                continue
+
+            if "text" in part and isinstance(part.get("text"), str):
+                sequential_parts.append(("text", part.get("text", "")))
+                continue
+
+            if "functionCall" in part and isinstance(part.get("functionCall"), dict):
+                function_call = part.get("functionCall", {})
+                tool_name_raw = str(function_call.get("name", ""))
+                tool_name = _map_antigravity_tool_to_claude(tool_name_raw)
+                tool_input = _parse_antigravity_tool_input(
+                    function_call.get("args")
+                    if "args" in function_call
+                    else function_call.get("arguments")
+                )
+                tool_id = allocate_tool_id(
+                    tool_name_raw,
+                    function_call.get("id") or function_call.get("call_id"),
+                )
+                sequential_parts.append(
+                    (
+                        "block",
+                        {
+                            "type": "tool_use",
+                            "id": tool_id,
+                            "name": tool_name,
+                            "input": tool_input,
+                        },
+                    )
+                )
+                continue
+
+            if "functionResponse" in part and isinstance(
+                part.get("functionResponse"), dict
+            ):
+                function_response = part.get("functionResponse", {})
+                tool_name_raw = str(function_response.get("name", ""))
+                tool_use_id = resolve_tool_id_for_response(tool_name_raw)
+                response = function_response.get("response")
+                sequential_parts.append(
+                    (
+                        "block",
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_use_id,
+                            "content": _parse_antigravity_tool_result_content(response),
+                            "is_error": bool(
+                                isinstance(response, dict)
+                                and (response.get("is_error") or response.get("error"))
+                            ),
+                        },
+                    )
+                )
+                continue
+
+        if not sequential_parts:
+            continue
+
+        if role == "user" and all(kind == "text" for kind, _ in sequential_parts):
+            content = "\n".join(value for _, value in sequential_parts).strip()
+        else:
+            content = []
+            for kind, value in sequential_parts:
+                if kind == "text":
+                    content.append({"type": "text", "text": value})
+                else:
+                    content.append(value)
+
+        loglines.append(
+            {
+                "type": role,
+                "timestamp": timestamp,
+                "message": {"role": role, "content": content},
+            }
+        )
 
     return {"loglines": loglines}
 
