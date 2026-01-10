@@ -853,6 +853,25 @@ def _parse_codex_jsonl_file(filepath):
     """Parse Codex CLI JSONL file and convert to Claude Code format."""
     loglines = []
 
+    def _extract_reasoning_text(obj):
+        if not isinstance(obj, dict):
+            return ""
+        for key in ("reasoning", "text", "content", "message"):
+            val = obj.get(key)
+            if isinstance(val, str):
+                return val
+        content = obj.get("content")
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                text = block.get("text", "")
+                if text:
+                    parts.append(text)
+            return "".join(parts)
+        return ""
+
     def add_message(role, content, timestamp):
         if role not in ("user", "assistant"):
             return
@@ -862,6 +881,21 @@ def _parse_codex_jsonl_file(filepath):
                 "type": role,
                 "timestamp": timestamp,
                 "message": {"role": role, "content": converted_content},
+            }
+        )
+
+    def add_thinking(reasoning_text, timestamp):
+        reasoning_text = (reasoning_text or "").strip()
+        if not reasoning_text:
+            return
+        loglines.append(
+            {
+                "type": "assistant",
+                "timestamp": timestamp,
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "thinking", "thinking": reasoning_text}],
+                },
             }
         )
 
@@ -934,6 +968,8 @@ def _parse_codex_jsonl_file(filepath):
                             payload.get("content", []),
                             timestamp,
                         )
+                    elif payload_type == "reasoning":
+                        add_thinking(_extract_reasoning_text(payload), timestamp)
                     elif payload_type == "function_call":
                         add_tool_use(
                             payload.get("name", ""),
@@ -954,6 +990,8 @@ def _parse_codex_jsonl_file(filepath):
                         obj.get("content", []),
                         timestamp,
                     )
+                elif record_type == "reasoning":
+                    add_thinking(_extract_reasoning_text(obj), timestamp)
                 elif record_type == "function_call":
                     call_id = obj.get("call_id") or obj.get("id", "")
                     add_tool_use(
