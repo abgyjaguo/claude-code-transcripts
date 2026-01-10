@@ -856,10 +856,14 @@ def _parse_markdown_chat_export(filepath):
 
     for line in lines:
         stripped = line.strip()
-        m = re.match(r"^##\s*(user|assistant)\s*$", stripped, re.IGNORECASE)
-        if m:
+        match = re.match(
+            r"^(?:#{1,6}\s*)?(?P<speaker>user|assistant)\s*:?\s*$",
+            stripped,
+            re.IGNORECASE,
+        )
+        if match:
             flush()
-            role = m.group(1).lower()
+            role = match.group("speaker").lower()
             continue
 
         if role is None:
@@ -2514,6 +2518,10 @@ def fetch_url_to_tempfile(url):
         suffix = ".jsonl"
     elif url_path.endswith(".json"):
         suffix = ".json"
+    elif url_path.endswith(".md") or url_path.endswith(".markdown"):
+        suffix = ".md"
+    elif url_path.endswith(".txt"):
+        suffix = ".txt"
     else:
         suffix = ".jsonl"  # Default to JSONL
 
@@ -2562,7 +2570,7 @@ def fetch_url_to_tempfile(url):
     help="Open the generated index.html in your default browser (default if no -o specified).",
 )
 def json_cmd(json_file, output, output_auto, repo, gist, include_json, open_browser):
-    """Convert a Claude Code session JSON/JSONL file or URL to HTML."""
+    """Convert a supported session/export file or URL to HTML."""
     # Handle URL input
     if is_url(json_file):
         click.echo(f"Fetching {json_file}...")

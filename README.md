@@ -32,7 +32,8 @@ This tool converts Claude Code and Codex CLI session files into browseable multi
 - Claude Code session files (JSONL format from `~/.claude/projects`)
 - Codex CLI session files (JSONL format from `~/.codex/sessions`) - automatically detected and converted
 - Cursor chat exports (JSON) - automatically detected when passed to the `json` command
-- VS Code-based IDE chat exports (Cursor/Windsurf/Augment) in JSON ("Chat: Export Chat") and Markdown/text formats
+- VS Code-based IDE chat exports in JSON ("Chat: Export Chat") and Markdown/text formats (Cursor/Windsurf/Augment)
+- Windsurf chat exports (JSON) - best-effort import
 
 **Rendered blocks:**
 - Claude Code `thinking` blocks (when present) are shown in the HTML output
