@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import webbrowser
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import click
@@ -556,9 +556,207 @@ def parse_session_file(filepath):
     if filepath.suffix == ".jsonl":
         return _parse_jsonl_file(filepath)
     else:
-        # Standard JSON format
         with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+
+        # If already in normalized format, return as-is
+        if isinstance(data, dict) and isinstance(data.get("loglines"), list):
+            return data
+
+        # Attempt to parse Augment ("Augument") chat exports into normalized loglines
+        augment_parsed = _parse_augment_export_data(data)
+        if augment_parsed is not None:
+            return augment_parsed
+
+        # Fallback: return raw JSON (may not be compatible with HTML generation)
+        return data
+
+
+def _coerce_timestamp_to_iso_z(value):
+    """Best-effort conversion of common timestamp shapes to an ISO 8601 string ending in 'Z'."""
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        v = value.strip()
+        return v or None
+
+    if isinstance(value, (int, float)):
+        # Heuristic: treat very large values as milliseconds since epoch
+        seconds = float(value) / 1000.0 if value > 10_000_000_000 else float(value)
+        try:
+            return (
+                datetime.fromtimestamp(seconds, tz=timezone.utc).isoformat(
+                    timespec="seconds"
+                )
+                + "Z"
+            )
+        except (OverflowError, OSError, ValueError):
+            return None
+
+    if isinstance(value, dict):
+        # Common shapes: {"seconds": ...}, {"ms": ...}, {"epoch_ms": ...}
+        for k in ("timestamp", "time", "created_at", "createdAt", "date"):
+            if k in value:
+                coerced = _coerce_timestamp_to_iso_z(value.get(k))
+                if coerced:
+                    return coerced
+        if "seconds" in value:
+            return _coerce_timestamp_to_iso_z(value.get("seconds"))
+        if "ms" in value:
+            return _coerce_timestamp_to_iso_z(value.get("ms"))
+        if "epoch_ms" in value:
+            return _coerce_timestamp_to_iso_z(value.get("epoch_ms"))
+
+    return None
+
+
+def _normalize_role_to_user_or_assistant(value):
+    if value is None:
+        return None
+
+    if isinstance(value, dict):
+        for k in ("role", "type", "name", "sender"):
+            if k in value:
+                value = value.get(k)
+                break
+
+    if not isinstance(value, str):
+        return None
+
+    role = value.strip().lower()
+    if role in ("user", "human", "me", "client", "customer"):
+        return "user"
+    if role in ("assistant", "ai", "bot", "augment", "agent"):
+        return "assistant"
+    if role in ("u", "usr"):
+        return "user"
+    if role in ("a", "asst"):
+        return "assistant"
+    if role in ("system", "tool", "function"):
+        return None
+    return None
+
+
+def _extract_text_from_maybe_rich_content(value):
+    """Extract a text string from common export shapes."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for k in ("text", "content", "message", "value", "body"):
+            if k in value:
+                return _extract_text_from_maybe_rich_content(value.get(k))
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            t = _extract_text_from_maybe_rich_content(item)
+            if t:
+                parts.append(t)
+        return "\n".join(parts)
+    return str(value)
+
+
+def _iter_augment_message_dicts(data):
+    """Yield message dicts from common Augment export shapes."""
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, dict):
+                yield item
+        return
+
+    if not isinstance(data, dict):
+        return
+
+    # Some exports wrap the payload in a "data" field
+    if isinstance(data.get("data"), (dict, list)):
+        yield from _iter_augment_message_dicts(data["data"])
+
+    # Top-level messages list
+    if isinstance(data.get("messages"), list):
+        for m in data["messages"]:
+            if isinstance(m, dict):
+                yield m
+
+    # Single conversation wrapper
+    conv = data.get("conversation")
+    if isinstance(conv, dict) and isinstance(conv.get("messages"), list):
+        for m in conv["messages"]:
+            if isinstance(m, dict):
+                yield m
+
+    # Multiple conversations/chats
+    for key in ("conversations", "chats"):
+        if not isinstance(data.get(key), list):
+            continue
+        for c in data[key]:
+            if not isinstance(c, dict):
+                continue
+            msgs = c.get("messages")
+            if isinstance(msgs, list):
+                for m in msgs:
+                    if isinstance(m, dict):
+                        yield m
+
+
+def _parse_augment_export_data(data):
+    """Parse Augment ("Augument") export JSON into normalized loglines.
+
+    Returns {"loglines": [...]} on success, or None if the data does not look like an Augment export.
+    """
+    loglines = []
+    saw_any_message = False
+
+    for idx, msg in enumerate(_iter_augment_message_dicts(data), start=1):
+        saw_any_message = True
+
+        role = (
+            _normalize_role_to_user_or_assistant(msg.get("role"))
+            or _normalize_role_to_user_or_assistant(msg.get("sender"))
+            or _normalize_role_to_user_or_assistant(msg.get("from"))
+            or _normalize_role_to_user_or_assistant(msg.get("author"))
+        )
+        if role not in ("user", "assistant"):
+            continue
+
+        ts = _coerce_timestamp_to_iso_z(
+            msg.get("created_at")
+            or msg.get("createdAt")
+            or msg.get("timestamp")
+            or msg.get("time")
+            or msg.get("date")
+        )
+        if not ts:
+            ts = f"unknown-{idx:04d}"
+
+        text = _extract_text_from_maybe_rich_content(
+            msg.get("content")
+            if "content" in msg
+            else msg.get("text", msg.get("message", msg.get("body", "")))
+        )
+
+        # Prefer Claude-style content blocks for assistant so Markdown renders correctly
+        if role == "assistant":
+            content = [{"type": "text", "text": text}]
+        else:
+            content = text
+
+        loglines.append(
+            {
+                "type": role,
+                "timestamp": ts,
+                "message": {"role": role, "content": content},
+            }
+        )
+
+    if loglines:
+        return {"loglines": loglines}
+    if saw_any_message:
+        # Data had messages but none were user/assistant; treat as non-Augment.
+        return None
+    return None
 
 
 def _is_codex_cli_format(filepath):
