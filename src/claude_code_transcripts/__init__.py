@@ -1398,6 +1398,81 @@ def format_tool_stats(tool_counts):
     return " · ".join(parts)
 
 
+def _collapse_whitespace(text):
+    if not isinstance(text, str):
+        return ""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _truncate_preview(text, max_len=120):
+    text = _collapse_whitespace(text)
+    if not text:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1].rstrip() + "…"
+
+
+def extract_first_assistant_reply_preview(messages, max_len=160):
+    """Extract a short assistant preview from a list of (type, json, ts) tuples."""
+    for log_type, message_json, _timestamp in messages:
+        if log_type != "assistant" or not message_json:
+            continue
+        try:
+            message_data = json.loads(message_json)
+        except json.JSONDecodeError:
+            continue
+
+        content = message_data.get("content", "")
+        if isinstance(content, str):
+            preview = _truncate_preview(content, max_len=max_len)
+            if preview:
+                return preview
+
+        if isinstance(content, list):
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                if block.get("type") != "text":
+                    continue
+                preview = _truncate_preview(block.get("text", ""), max_len=max_len)
+                if preview:
+                    return preview
+
+    return ""
+
+
+def build_turn_summaries(turns):
+    """Build sidebar turn summaries for a list of conversation dicts."""
+    items = []
+    for turn in turns:
+        stats = analyze_conversation(turn["messages"])
+        tool_counts = stats["tool_counts"]
+        total_tool_calls = sum(tool_counts.values())
+        tool_stats_str = format_tool_stats(tool_counts)
+        tool_label = "tool call" if total_tool_calls == 1 else "tool calls"
+        if tool_stats_str:
+            tool_meta = f"{total_tool_calls} {tool_label} · {tool_stats_str}"
+        else:
+            tool_meta = f"{total_tool_calls} {tool_label}"
+
+        items.append(
+            {
+                "anchor_id": make_msg_id(turn["timestamp"]),
+                "user_preview": _truncate_preview(
+                    turn.get("user_text", ""), max_len=140
+                ),
+                "assistant_preview": extract_first_assistant_reply_preview(
+                    turn["messages"], max_len=200
+                ),
+                "tool_stats_str": tool_stats_str,
+                "total_tool_calls": total_tool_calls,
+                "tool_meta": tool_meta,
+            }
+        )
+    return items
+
+
 def is_tool_result_message(message_data):
     """Check if a message contains only tool_result blocks."""
     content = message_data.get("content", [])
@@ -1441,8 +1516,18 @@ CSS = """
 * { box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 0; line-height: 1.6; }
 .app-shell { display: flex; min-height: 100vh; }
-.container { max-width: 800px; margin: 0 auto; padding: 16px; }
 .main { flex: 1; min-width: 0; }
+.container { max-width: 1200px; margin: 0 auto; padding: 16px; }
+.layout { display: flex; gap: 16px; align-items: flex-start; }
+.main-content { flex: 1; min-width: 0; max-width: 800px; }
+.right-sidebar { width: 320px; position: sticky; top: 16px; align-self: flex-start; }
+.right-sidebar-header { font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; font-size: 0.85rem; color: var(--text-muted); margin: 4px 0 12px 0; }
+.turn-list { display: flex; flex-direction: column; gap: 8px; }
+.turn-item { display: block; text-decoration: none; color: inherit; background: var(--card-bg); border: 1px solid rgba(0,0,0,0.08); border-radius: 10px; padding: 10px 12px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); }
+.turn-item:hover { background: rgba(25, 118, 210, 0.04); border-color: rgba(25, 118, 210, 0.25); }
+.turn-user { font-weight: 600; font-size: 0.9rem; line-height: 1.3; margin-bottom: 6px; }
+.turn-meta { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px; }
+.turn-assistant { font-size: 0.85rem; color: var(--text-color); opacity: 0.9; line-height: 1.3; }
 .topbar { display: none; position: sticky; top: 0; z-index: 10; padding: 10px 12px; background: var(--bg-color); border-bottom: 1px solid rgba(0,0,0,0.08); }
 .sidebar-open-btn { background: var(--card-bg); color: var(--text-color); border: 1px solid rgba(0,0,0,0.15); border-radius: 8px; padding: 6px 10px; font-size: 1.0rem; cursor: pointer; }
 .sidebar { width: 280px; background: var(--card-bg); border-right: 1px solid rgba(0,0,0,0.08); position: sticky; top: 0; height: 100vh; overflow-y: auto; }
@@ -1597,6 +1682,7 @@ details.continuation[open] summary { border-radius: 12px 12px 0 0; margin-bottom
 .search-result-page { padding: 6px 12px; background: rgba(0,0,0,0.03); font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
 .search-result-content { padding: 12px; }
 .search-result mark { background: #fff59d; padding: 1px 2px; border-radius: 2px; }
+@media (max-width: 1100px) { .layout { flex-direction: column; } .main-content { max-width: none; } .right-sidebar { width: 100%; position: static; top: auto; } }
 @media (max-width: 900px) { .topbar { display: flex; } .sidebar { position: fixed; top: 0; bottom: 0; left: 0; height: auto; width: min(86vw, 320px); transform: translateX(-105%); transition: transform 180ms ease-out; z-index: 20; box-shadow: 0 10px 30px rgba(0,0,0,0.2); } body.cct-sidebar-open .sidebar { transform: translateX(0); } body.cct-sidebar-open .sidebar-backdrop { display: block; } }
 @media (max-width: 600px) { .container { padding: 8px; } .message, .index-item { border-radius: 8px; } .message-content, .index-item-content { padding: 12px; } pre { font-size: 0.8rem; padding: 8px; } #search-box input { width: 120px; } #search-modal[open] { width: 95vw; height: 90vh; } }
 """
@@ -1795,6 +1881,19 @@ document.querySelectorAll('.truncatable').forEach(function(wrapper) {
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 })();
+function openDetailsForHash() {
+    const id = window.location.hash ? window.location.hash.slice(1) : '';
+    if (!id) return;
+    const target = document.getElementById(id);
+    if (!target) return;
+    let el = target.parentElement;
+    while (el) {
+        if (el.tagName === 'DETAILS') { el.open = true; }
+        el = el.parentElement;
+    }
+}
+window.addEventListener('hashchange', openDetailsForHash);
+openDetailsForHash();
 """
 
 # JavaScript to fix relative URLs when served via gisthost.github.io or gistpreview.github.io
@@ -2034,6 +2133,7 @@ def generate_html(json_path, output_dir, github_repo=None):
             total_pages=total_pages,
             pagination_html=pagination_html,
             messages_html="".join(messages_html),
+            turns=build_turn_summaries(page_convs),
         )
         (output_dir / f"page-{page_num:03d}.html").write_text(
             page_content, encoding="utf-8"
@@ -2508,6 +2608,7 @@ def generate_html_from_session_data(session_data, output_dir, github_repo=None):
             total_pages=total_pages,
             pagination_html=pagination_html,
             messages_html="".join(messages_html),
+            turns=build_turn_summaries(page_convs),
         )
         (output_dir / f"page-{page_num:03d}.html").write_text(
             page_content, encoding="utf-8"

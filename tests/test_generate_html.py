@@ -85,6 +85,17 @@ class TestGenerateHtml:
         page_html = (output_dir / "page-002.html").read_text(encoding="utf-8")
         assert page_html == snapshot_html
 
+    def test_turn_sidebar_present_in_page_html(self, output_dir):
+        """Page HTML includes a per-turn summary sidebar."""
+        fixture_path = Path(__file__).parent / "sample_session.json"
+        generate_html(fixture_path, output_dir, github_repo="example/project")
+
+        page_html = (output_dir / "page-001.html").read_text(encoding="utf-8")
+
+        assert 'id="turn-sidebar"' in page_html
+        assert 'class="turn-item"' in page_html
+        assert "Create a simple Python function to add two numbers" in page_html
+
     def test_github_repo_autodetect(self, sample_session):
         """Test GitHub repo auto-detection from git push output."""
         loglines = sample_session["loglines"]

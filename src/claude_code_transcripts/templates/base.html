@@ -37,7 +37,12 @@
                 <button id="cct-sidebar-open" class="sidebar-open-btn" type="button" aria-label="Open sidebar">&#9776;</button>
             </div>
             <div class="container">
+                <div class="layout">
+                    <main class="main-content">
 {%- block content %}{% endblock %}
+                    </main>
+{%- block sidebar %}{% endblock %}
+                </div>
             </div>
         </div>
     </div>
