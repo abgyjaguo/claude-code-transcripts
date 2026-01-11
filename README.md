@@ -31,6 +31,10 @@ This tool converts Claude Code and Codex CLI session files into browseable multi
 - Codex CLI session files (JSONL format from `~/.codex/sessions`) - automatically detected and converted
 - Cursor chat exports (JSON) - automatically detected when passed to the `json` command
 
+**Rendered blocks:**
+- Claude Code `thinking` blocks (when present) are shown in the HTML output
+- Codex CLI `reasoning` entries (when present) are normalized to `thinking` and shown
+
 There are four commands available:
 
 - `local` (default) - select from local sessions (Claude Code from `~/.claude/projects` and Codex CLI from `~/.codex/sessions`)

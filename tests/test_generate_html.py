@@ -1111,6 +1111,56 @@ class TestParseSessionFile:
         assert "print('hi')" in page_html
         # Ensure code fences are rendered as HTML (not escaped)
         assert "<pre><code" in page_html
+    def test_codex_jsonl_reasoning_converted_to_thinking(self, tmp_path):
+        """Test that Codex CLI reasoning entries are normalized to Claude thinking blocks."""
+        jsonl_file = tmp_path / "codex.jsonl"
+        jsonl_file.write_text(
+            '{"type":"message","timestamp":"2025-01-01T00:00:00Z","role":"user","content":[{"type":"input_text","text":"Hi"}]}\n'
+            '{"type":"reasoning","timestamp":"2025-01-01T00:00:01Z","content":"Let me think..."}\n'
+            '{"type":"message","timestamp":"2025-01-01T00:00:02Z","role":"assistant","content":[{"type":"output_text","text":"Hello"}]}\n',
+            encoding="utf-8",
+        )
+
+        result = parse_session_file(jsonl_file)
+
+        thinking_entry = next(
+            e
+            for e in result["loglines"]
+            if e.get("type") == "assistant"
+            and isinstance(e.get("message", {}).get("content"), list)
+            and any(
+                isinstance(b, dict) and b.get("type") == "thinking"
+                for b in e["message"]["content"]
+            )
+        )
+        thinking_block = next(
+            b
+            for b in thinking_entry["message"]["content"]
+            if b.get("type") == "thinking"
+        )
+
+        assert thinking_block.get("thinking") == "Let me think..."
+        assert render_content_block(thinking_block) == render_content_block(
+            {"type": "thinking", "thinking": "Let me think..."}
+        )
+
+    def test_codex_jsonl_reasoning_renders_in_html(self, tmp_path):
+        """Test that Codex CLI reasoning entries appear in the generated HTML."""
+        jsonl_file = tmp_path / "codex.jsonl"
+        jsonl_file.write_text(
+            '{"type":"message","timestamp":"2025-01-01T00:00:00Z","role":"user","content":[{"type":"input_text","text":"Hi"}]}\n'
+            '{"type":"reasoning","timestamp":"2025-01-01T00:00:01Z","content":"Let me think..."}\n'
+            '{"type":"message","timestamp":"2025-01-01T00:00:02Z","role":"assistant","content":[{"type":"output_text","text":"Hello"}]}\n',
+            encoding="utf-8",
+        )
+
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+        generate_html(jsonl_file, output_dir)
+
+        page_html = (output_dir / "page-001.html").read_text(encoding="utf-8")
+        assert "Thinking" in page_html
+        assert "Let me think" in page_html
 
 
 class TestGetSessionSummary:
