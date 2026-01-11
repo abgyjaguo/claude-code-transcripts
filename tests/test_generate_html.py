@@ -1122,6 +1122,7 @@ class TestParseSessionFile:
         assert "print('hi')" in page_html
         # Ensure code fences are rendered as HTML (not escaped)
         assert "<pre><code" in page_html
+
     def test_codex_jsonl_reasoning_converted_to_thinking(self, tmp_path):
         """Test that Codex CLI reasoning entries are normalized to Claude thinking blocks."""
         jsonl_file = tmp_path / "codex.jsonl"

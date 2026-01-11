@@ -808,7 +808,11 @@ def _parse_vscode_chat_export_json(data, filepath=None):
 
         if user_text:
             loglines.append(
-                {"type": "user", "timestamp": user_ts, "message": {"role": "user", "content": user_text}}
+                {
+                    "type": "user",
+                    "timestamp": user_ts,
+                    "message": {"role": "user", "content": user_text},
+                }
             )
 
         response = req.get("response")
@@ -822,8 +826,13 @@ def _parse_vscode_chat_export_json(data, filepath=None):
 
         assistant_text = "".join(parts).strip()
         if assistant_text:
-            message = {"role": "assistant", "content": [{"type": "text", "text": assistant_text}]}
-            loglines.append({"type": "assistant", "timestamp": assistant_ts, "message": message})
+            message = {
+                "role": "assistant",
+                "content": [{"type": "text", "text": assistant_text}],
+            }
+            loglines.append(
+                {"type": "assistant", "timestamp": assistant_ts, "message": message}
+            )
 
     return {"loglines": loglines}
 
@@ -867,7 +876,10 @@ def _parse_markdown_chat_export(filepath):
         if role == "user":
             message = {"role": "user", "content": content}
         else:
-            message = {"role": "assistant", "content": [{"type": "text", "text": content}]}
+            message = {
+                "role": "assistant",
+                "content": [{"type": "text", "text": content}],
+            }
         loglines.append({"type": role, "timestamp": ts, "message": message})
 
     return {"loglines": loglines}
