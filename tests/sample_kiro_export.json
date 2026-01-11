@@ -1,0 +1,115 @@
+{
+  "conversation_id": "test-conversation-id",
+  "next_message": null,
+  "history": [
+    {
+      "user": {
+        "additional_context": "",
+        "env_context": { "env_state": null },
+        "content": { "Prompt": { "prompt": "Hello from Kiro" } },
+        "timestamp": "2026-01-10T10:00:00+00:00",
+        "images": null
+      },
+      "assistant": { "Response": { "message_id": null, "content": "Hi! How can I help?" } },
+      "request_metadata": {
+        "request_id": null,
+        "message_id": "msg-1",
+        "request_start_timestamp_ms": 1768048800000,
+        "stream_end_timestamp_ms": 1768048805000,
+        "time_to_first_chunk": null,
+        "time_between_chunks": [],
+        "user_prompt_length": 0,
+        "response_size": 0,
+        "chat_conversation_type": null,
+        "tool_use_ids_and_names": [],
+        "model_id": null,
+        "message_meta_tags": []
+      }
+    },
+    {
+      "user": {
+        "additional_context": "",
+        "env_context": { "env_state": null },
+        "content": { "Prompt": { "prompt": "List files" } },
+        "timestamp": "2026-01-10T10:01:00+00:00",
+        "images": null
+      },
+      "assistant": {
+        "ToolUse": {
+          "message_id": null,
+          "content": "Running a command...",
+          "tool_uses": [
+            {
+              "id": "tool-1",
+              "name": "Bash",
+              "orig_name": "Bash",
+              "args": { "command": "ls -la" },
+              "orig_args": { "command": "ls -la" }
+            }
+          ]
+        }
+      },
+      "request_metadata": {
+        "request_id": null,
+        "message_id": "msg-2",
+        "request_start_timestamp_ms": 1768048860000,
+        "stream_end_timestamp_ms": 1768048862000,
+        "time_to_first_chunk": null,
+        "time_between_chunks": [],
+        "user_prompt_length": 0,
+        "response_size": 0,
+        "chat_conversation_type": null,
+        "tool_use_ids_and_names": [["tool-1", "Bash"]],
+        "model_id": null,
+        "message_meta_tags": []
+      }
+    },
+    {
+      "user": {
+        "additional_context": "",
+        "env_context": { "env_state": null },
+        "content": {
+          "ToolUseResults": {
+            "tool_use_results": [
+              {
+                "tool_use_id": "tool-1",
+                "content": [{ "Text": "file1.txt\nfile2.txt\n" }],
+                "status": "Success"
+              }
+            ]
+          }
+        },
+        "timestamp": "2026-01-10T10:01:05+00:00",
+        "images": null
+      },
+      "assistant": { "Response": { "message_id": null, "content": "Done." } },
+      "request_metadata": {
+        "request_id": null,
+        "message_id": "msg-3",
+        "request_start_timestamp_ms": 1768048865000,
+        "stream_end_timestamp_ms": 1768048868000,
+        "time_to_first_chunk": null,
+        "time_between_chunks": [],
+        "user_prompt_length": 0,
+        "response_size": 0,
+        "chat_conversation_type": null,
+        "tool_use_ids_and_names": [],
+        "model_id": null,
+        "message_meta_tags": []
+      }
+    }
+  ],
+  "valid_history_range": [0, 3],
+  "transcript": [],
+  "tools": {},
+  "context_manager": null,
+  "context_message_length": null,
+  "latest_summary": null,
+  "model": null,
+  "model_info": null,
+  "file_line_tracker": {},
+  "checkpoint_manager": null,
+  "mcp_enabled": true,
+  "tangent_state": null
+}
+

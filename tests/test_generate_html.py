@@ -1133,6 +1133,49 @@ class TestParseSessionFile:
         assert "hello world" in index_html.lower()
         assert index_html == snapshot_html
 
+    def test_parses_kiro_export_format(self):
+        """Test that Kiro /save export JSON is parsed and normalized."""
+        fixture_path = Path(__file__).parent / "sample_kiro_export.json"
+        result = parse_session_file(fixture_path)
+
+        assert "loglines" in result
+        assert len(result["loglines"]) == 6
+
+        assert result["loglines"][0]["type"] == "user"
+        assert result["loglines"][0]["message"]["content"] == "Hello from Kiro"
+
+        tool_use_entry = next(
+            e
+            for e in result["loglines"]
+            if e["type"] == "assistant"
+            and isinstance(e["message"].get("content"), list)
+            and any(b.get("type") == "tool_use" for b in e["message"]["content"])
+        )
+        tool_use_block = next(
+            b
+            for b in tool_use_entry["message"]["content"]
+            if b.get("type") == "tool_use"
+        )
+        assert tool_use_block["id"] == "tool-1"
+        assert tool_use_block["name"] == "Bash"
+        assert tool_use_block["input"]["command"] == "ls -la"
+
+        tool_result_entry = next(
+            e
+            for e in result["loglines"]
+            if e["type"] == "user"
+            and isinstance(e["message"].get("content"), list)
+            and any(b.get("type") == "tool_result" for b in e["message"]["content"])
+        )
+        tool_result_block = next(
+            b
+            for b in tool_result_entry["message"]["content"]
+            if b.get("type") == "tool_result"
+        )
+        assert tool_result_block["tool_use_id"] == "tool-1"
+        assert "file1.txt" in tool_result_block["content"]
+        assert tool_result_block.get("is_error") is False
+
     def test_cursor_export_generates_html(self, tmp_path):
         """Test that Cursor export JSON files can be converted to HTML."""
         fixture_path = Path(__file__).parent / "sample_cursor_export.json"
