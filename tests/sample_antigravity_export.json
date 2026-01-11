@@ -1,0 +1,56 @@
+{
+  "exporter": "antigravity",
+  "version": 1,
+  "exportedAt": "2026-01-01T12:00:00Z",
+  "contents": [
+    {
+      "role": "user",
+      "createTime": "2026-01-01T12:00:01Z",
+      "parts": [
+        {
+          "text": "Please run `echo hello`."
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "createTime": "2026-01-01T12:00:02Z",
+      "parts": [
+        {
+          "text": "Sure — running that now."
+        },
+        {
+          "functionCall": {
+            "name": "shell_command",
+            "args": {
+              "command": "echo hello"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "createTime": "2026-01-01T12:00:03Z",
+      "parts": [
+        {
+          "functionResponse": {
+            "name": "shell_command",
+            "response": {
+              "output": "hello\n"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "role": "model",
+      "createTime": "2026-01-01T12:00:04Z",
+      "parts": [
+        {
+          "text": "Done."
+        }
+      ]
+    }
+  ]
+}
