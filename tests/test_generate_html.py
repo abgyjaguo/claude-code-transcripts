@@ -1668,3 +1668,28 @@ class TestSearchFeature:
 
         # Total pages should be embedded for JS to know how many pages to fetch
         assert "totalPages" in index_html or "total_pages" in index_html
+
+
+class TestSidebarFeature:
+    """Tests for the left sidebar (filters + outline) on transcript pages."""
+
+    def test_sidebar_present_in_page_html(self, output_dir):
+        """Test that transcript pages include the sidebar containers and filter inputs."""
+        fixture_path = Path(__file__).parent / "sample_session.json"
+        generate_html(fixture_path, output_dir, github_repo="example/project")
+
+        page_html = (output_dir / "page-001.html").read_text(encoding="utf-8")
+
+        assert 'id="cct-sidebar"' in page_html
+        assert 'id="cct-outline"' in page_html
+
+        # Filter toggles
+        assert 'id="cct-filter-user"' in page_html
+        assert 'id="cct-filter-assistant"' in page_html
+        assert 'id="cct-filter-thinking"' in page_html
+        assert 'id="cct-filter-tool-use"' in page_html
+        assert 'id="cct-filter-tool-result"' in page_html
+
+        # Persistence via localStorage (across page navigation)
+        assert "localStorage" in page_html
+        assert "cct.sidebar.filters.v1" in page_html

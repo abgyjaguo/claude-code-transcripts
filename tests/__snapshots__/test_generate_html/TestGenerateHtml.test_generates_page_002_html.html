@@ -7,12 +7,37 @@
     <style>
 :root { --bg-color: #f5f5f5; --card-bg: #ffffff; --user-bg: #e3f2fd; --user-border: #1976d2; --assistant-bg: #f5f5f5; --assistant-border: #9e9e9e; --thinking-bg: #fff8e1; --thinking-border: #ffc107; --thinking-text: #666; --tool-bg: #f3e5f5; --tool-border: #9c27b0; --tool-result-bg: #e8f5e9; --tool-error-bg: #ffebee; --text-color: #212121; --text-muted: #757575; --code-bg: #263238; --code-text: #aed581; }
 * { box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 16px; line-height: 1.6; }
-.container { max-width: 800px; margin: 0 auto; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 0; line-height: 1.6; }
+.app-shell { display: flex; min-height: 100vh; }
+.container { max-width: 800px; margin: 0 auto; padding: 16px; }
+.main { flex: 1; min-width: 0; }
+.topbar { display: none; position: sticky; top: 0; z-index: 10; padding: 10px 12px; background: var(--bg-color); border-bottom: 1px solid rgba(0,0,0,0.08); }
+.sidebar-open-btn { background: var(--card-bg); color: var(--text-color); border: 1px solid rgba(0,0,0,0.15); border-radius: 8px; padding: 6px 10px; font-size: 1.0rem; cursor: pointer; }
+.sidebar { width: 280px; background: var(--card-bg); border-right: 1px solid rgba(0,0,0,0.08); position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.sidebar-inner { padding: 16px; }
+.sidebar-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid rgba(0,0,0,0.08); }
+.sidebar-title { font-weight: 600; }
+.sidebar-close-btn { background: transparent; border: none; font-size: 1.2rem; line-height: 1; cursor: pointer; color: var(--text-muted); padding: 6px; border-radius: 8px; }
+.sidebar-close-btn:hover { background: rgba(0,0,0,0.05); color: var(--text-color); }
+.sidebar-section { margin-top: 16px; }
+.sidebar-section-title { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin-bottom: 10px; }
+.sidebar-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: var(--text-color); padding: 6px 0; cursor: pointer; user-select: none; }
+.sidebar-toggle input { width: 16px; height: 16px; }
+.outline { display: block; }
+.outline a { display: block; text-decoration: none; color: inherit; padding: 4px 0; border-radius: 6px; }
+.outline a:hover { background: rgba(0,0,0,0.04); }
+.outline .outline-heading { padding-left: 12px; color: var(--text-muted); font-size: 0.85rem; }
+.outline .outline-empty { color: var(--text-muted); font-size: 0.85rem; padding: 4px 0; }
+.sidebar-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 15; }
+body.cct-hide-user .message.user { display: none; }
+body.cct-hide-assistant .message.assistant { display: none; }
+body.cct-hide-thinking .thinking { display: none; }
+body.cct-hide-tool-use .tool-use { display: none; }
+body.cct-hide-tool-result .tool-result { display: none; }
 h1 { font-size: 1.5rem; margin-bottom: 24px; padding-bottom: 8px; border-bottom: 2px solid var(--user-border); }
 .header-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 2px solid var(--user-border); padding-bottom: 8px; margin-bottom: 24px; }
 .header-row h1 { border-bottom: none; padding-bottom: 0; margin-bottom: 0; flex: 1; min-width: 200px; }
-.message { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.message { margin-bottom: 16px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); scroll-margin-top: 64px; }
 .message.user { background: var(--user-bg); border-left: 4px solid var(--user-border); }
 .message.assistant { background: var(--card-bg); border-left: 4px solid var(--assistant-border); }
 .message.tool-reply { background: #fff8e1; border-left: 4px solid #ff9800; }
@@ -140,11 +165,41 @@ details.continuation[open] summary { border-radius: 12px 12px 0 0; margin-bottom
 .search-result-page { padding: 6px 12px; background: rgba(0,0,0,0.03); font-size: 0.8rem; color: var(--text-muted); border-bottom: 1px solid rgba(0,0,0,0.06); }
 .search-result-content { padding: 12px; }
 .search-result mark { background: #fff59d; padding: 1px 2px; border-radius: 2px; }
-@media (max-width: 600px) { body { padding: 8px; } .message, .index-item { border-radius: 8px; } .message-content, .index-item-content { padding: 12px; } pre { font-size: 0.8rem; padding: 8px; } #search-box input { width: 120px; } #search-modal[open] { width: 95vw; height: 90vh; } }
+@media (max-width: 900px) { .topbar { display: flex; } .sidebar { position: fixed; top: 0; bottom: 0; left: 0; height: auto; width: min(86vw, 320px); transform: translateX(-105%); transition: transform 180ms ease-out; z-index: 20; box-shadow: 0 10px 30px rgba(0,0,0,0.2); } body.cct-sidebar-open .sidebar { transform: translateX(0); } body.cct-sidebar-open .sidebar-backdrop { display: block; } }
+@media (max-width: 600px) { .container { padding: 8px; } .message, .index-item { border-radius: 8px; } .message-content, .index-item-content { padding: 12px; } pre { font-size: 0.8rem; padding: 8px; } #search-box input { width: 120px; } #search-modal[open] { width: 95vw; height: 90vh; } }
 </style>
 </head>
 <body>
-    <div class="container">
+    <div class="app-shell">
+        <div id="cct-sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+        <aside class="sidebar" id="cct-sidebar" aria-label="Transcript sidebar">
+            <div class="sidebar-inner">
+                <div class="sidebar-header">
+                    <div class="sidebar-title">Navigation</div>
+                    <button id="cct-sidebar-close" class="sidebar-close-btn" type="button" aria-label="Close sidebar">&times;</button>
+                </div>
+
+                <section class="sidebar-section" aria-label="Filters">
+                    <div class="sidebar-section-title">Filters</div>
+                    <label class="sidebar-toggle"><input type="checkbox" id="cct-filter-user" checked> User</label>
+                    <label class="sidebar-toggle"><input type="checkbox" id="cct-filter-assistant" checked> Assistant</label>
+                    <label class="sidebar-toggle"><input type="checkbox" id="cct-filter-thinking" checked> Thinking</label>
+                    <label class="sidebar-toggle"><input type="checkbox" id="cct-filter-tool-use" checked> Tool calls</label>
+                    <label class="sidebar-toggle"><input type="checkbox" id="cct-filter-tool-result" checked> Tool results</label>
+                </section>
+
+                <section class="sidebar-section" aria-label="Outline">
+                    <div class="sidebar-section-title">Outline</div>
+                    <nav id="cct-outline" class="outline" aria-label="Outline"></nav>
+                </section>
+            </div>
+        </aside>
+
+        <div class="main">
+            <div class="topbar">
+                <button id="cct-sidebar-open" class="sidebar-open-btn" type="button" aria-label="Open sidebar">&#9776;</button>
+            </div>
+            <div class="container">
         <h1><a href="index.html" style="color: inherit; text-decoration: none;">Claude Code transcript</a> - page 2/2</h1>
         
 
@@ -187,6 +242,8 @@ def multiply(a: int, b: int) -&gt; int:
 <span class="disabled">Next &rarr;</span>
 </div>
 
+            </div>
+        </div>
     </div>
     <script>
 document.querySelectorAll('time[data-timestamp]').forEach(function(el) {
@@ -217,6 +274,171 @@ document.querySelectorAll('.truncatable').forEach(function(wrapper) {
         });
     }
 });
+
+(function() {
+    const filtersKey = 'cct.sidebar.filters.v1';
+    const sidebarOpenKey = 'cct.sidebar.open.v1';
+    const body = document.body;
+
+    const filterDefs = [
+        { key: 'user', checkboxId: 'cct-filter-user', hideClass: 'cct-hide-user', defaultValue: true },
+        { key: 'assistant', checkboxId: 'cct-filter-assistant', hideClass: 'cct-hide-assistant', defaultValue: true },
+        { key: 'thinking', checkboxId: 'cct-filter-thinking', hideClass: 'cct-hide-thinking', defaultValue: true },
+        { key: 'tool_use', checkboxId: 'cct-filter-tool-use', hideClass: 'cct-hide-tool-use', defaultValue: true },
+        { key: 'tool_result', checkboxId: 'cct-filter-tool-result', hideClass: 'cct-hide-tool-result', defaultValue: true },
+    ];
+
+    function defaultFilters() {
+        const result = {};
+        filterDefs.forEach(function(def) {
+            result[def.key] = def.defaultValue;
+        });
+        return result;
+    }
+
+    function loadFilters() {
+        try {
+            const raw = localStorage.getItem(filtersKey);
+            if (!raw) return defaultFilters();
+            const parsed = JSON.parse(raw);
+            const base = defaultFilters();
+            Object.keys(base).forEach(function(key) {
+                if (typeof parsed[key] === 'boolean') base[key] = parsed[key];
+            });
+            return base;
+        } catch (e) {
+            return defaultFilters();
+        }
+    }
+
+    function saveFilters(filters) {
+        try {
+            localStorage.setItem(filtersKey, JSON.stringify(filters));
+        } catch (e) {
+            // Ignore storage errors (e.g., private mode).
+        }
+    }
+
+    function applyFilters(filters) {
+        filterDefs.forEach(function(def) {
+            body.classList.toggle(def.hideClass, !filters[def.key]);
+            const checkbox = document.getElementById(def.checkboxId);
+            if (checkbox) checkbox.checked = !!filters[def.key];
+        });
+    }
+
+    const filters = loadFilters();
+    applyFilters(filters);
+
+    filterDefs.forEach(function(def) {
+        const checkbox = document.getElementById(def.checkboxId);
+        if (!checkbox) return;
+        checkbox.addEventListener('change', function() {
+            filters[def.key] = !!checkbox.checked;
+            applyFilters(filters);
+            saveFilters(filters);
+        });
+    });
+
+    const backdrop = document.getElementById('cct-sidebar-backdrop');
+    const openBtn = document.getElementById('cct-sidebar-open');
+    const closeBtn = document.getElementById('cct-sidebar-close');
+
+    function setSidebarOpen(open) {
+        body.classList.toggle('cct-sidebar-open', open);
+        if (backdrop) backdrop.hidden = !open;
+        try {
+            localStorage.setItem(sidebarOpenKey, open ? '1' : '0');
+        } catch (e) {}
+    }
+
+    function loadSidebarOpen() {
+        try {
+            return localStorage.getItem(sidebarOpenKey) === '1';
+        } catch (e) {
+            return false;
+        }
+    }
+
+    if (openBtn) openBtn.addEventListener('click', function() { setSidebarOpen(true); });
+    if (closeBtn) closeBtn.addEventListener('click', function() { setSidebarOpen(false); });
+    if (backdrop) backdrop.addEventListener('click', function() { setSidebarOpen(false); });
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') setSidebarOpen(false);
+    });
+
+    // Restore open state (mobile only; harmless on desktop)
+    if (loadSidebarOpen()) setSidebarOpen(true);
+
+    function slugify(text) {
+        return (text || '')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)/g, '')
+            .slice(0, 50);
+    }
+
+    function buildOutline() {
+        const outline = document.getElementById('cct-outline');
+        if (!outline) return;
+
+        const messages = Array.from(document.querySelectorAll('.message[id]'));
+        if (messages.length === 0) {
+            outline.innerHTML = '<div class="outline-empty">No outline on this page.</div>';
+            return;
+        }
+
+        outline.innerHTML = '';
+        const frag = document.createDocumentFragment();
+
+        messages.forEach(function(message) {
+            const role = (message.querySelector('.role-label') || {}).textContent || 'Message';
+            const timeEl = message.querySelector('time');
+            const timeLabel = timeEl ? (timeEl.textContent || timeEl.getAttribute('data-timestamp') || '') : '';
+
+            const msgLink = document.createElement('a');
+            msgLink.href = '#' + message.id;
+            msgLink.className = 'outline-message';
+            msgLink.textContent = role + (timeLabel ? (' · ' + timeLabel) : '');
+            frag.appendChild(msgLink);
+
+            const headings = Array.from(
+                message.querySelectorAll('.message-content h1, .message-content h2, .message-content h3')
+            );
+
+            headings.forEach(function(h, idx) {
+                const text = (h.textContent || '').trim();
+                if (!text) return;
+                if (!h.id) h.id = message.id + '--h-' + slugify(text) + '-' + idx;
+
+                const hLink = document.createElement('a');
+                hLink.href = '#' + h.id;
+                hLink.className = 'outline-heading';
+                hLink.textContent = text;
+                frag.appendChild(hLink);
+            });
+        });
+
+        outline.appendChild(frag);
+
+        outline.querySelectorAll('a[href^="#"]').forEach(function(link) {
+            link.addEventListener('click', function() {
+                if (window.matchMedia && window.matchMedia('(max-width: 900px)').matches) {
+                    setSidebarOpen(false);
+                }
+            });
+        });
+    }
+
+    buildOutline();
+
+    // If the URL points at a heading, ensure it scrolls after we assign IDs.
+    if (window.location.hash) {
+        const targetId = window.location.hash.substring(1);
+        const target = document.getElementById(targetId);
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+})();
 </script>
 </body>
 </html>
