@@ -29,6 +29,7 @@ This tool converts Claude Code and Codex CLI session files into browseable multi
 **Supported formats:**
 - Claude Code session files (JSONL format from `~/.claude/projects`)
 - Codex CLI session files (JSONL format from `~/.codex/sessions`) - automatically detected and converted
+- Cursor chat exports (JSON) - automatically detected when passed to the `json` command
 
 There are four commands available:
 

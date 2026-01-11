@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import webbrowser
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import click
@@ -556,9 +556,200 @@ def parse_session_file(filepath):
     if filepath.suffix == ".jsonl":
         return _parse_jsonl_file(filepath)
     else:
-        # Standard JSON format
+        # Standard JSON format (with additional supported export formats)
         with open(filepath, "r", encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+
+        # Already in normalized format
+        if isinstance(data, dict) and "loglines" in data:
+            return data
+
+        # Cursor chat export JSON -> normalized loglines
+        cursor_data = _parse_cursor_export(data, filepath)
+        if cursor_data is not None:
+            return cursor_data
+
+        # Some exports may be a bare list of loglines
+        if isinstance(data, list) and all(
+            isinstance(item, dict) and {"type", "timestamp", "message"}.issubset(item)
+            for item in data
+        ):
+            return {"loglines": data}
+
+        return data
+
+
+def _format_timestamp(dt):
+    dt = dt.astimezone(timezone.utc)
+    # Match Claude Code style: 2025-12-24T10:00:00.000Z
+    return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def _coerce_datetime(value):
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        # Heuristic: milliseconds vs seconds
+        seconds = value / 1000 if value > 1_000_000_000_000 else value
+        try:
+            return datetime.fromtimestamp(seconds, tz=timezone.utc)
+        except (OSError, OverflowError, ValueError):
+            return None
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        if s.isdigit():
+            try:
+                return _coerce_datetime(int(s))
+            except ValueError:
+                return None
+        # Support ISO-8601 with trailing Z
+        try:
+            if s.endswith("Z"):
+                s = s[:-1] + "+00:00"
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
+def _extract_cursor_messages(data):
+    if isinstance(data, list):
+        return data
+    if not isinstance(data, dict):
+        return None
+    if isinstance(data.get("messages"), list):
+        return data["messages"]
+    for key in ("conversation", "chat", "data", "export", "payload"):
+        nested = data.get(key)
+        if isinstance(nested, dict) and isinstance(nested.get("messages"), list):
+            return nested["messages"]
+    if isinstance(data.get("items"), list):
+        return data["items"]
+    history = data.get("history")
+    if isinstance(history, dict) and isinstance(history.get("messages"), list):
+        return history["messages"]
+    if isinstance(history, list):
+        return history
+    return None
+
+
+def _cursor_message_role(msg):
+    role = msg.get("role")
+    if isinstance(role, dict):
+        role = role.get("role") or role.get("name")
+    if not role:
+        role = msg.get("author") or msg.get("speaker") or msg.get("type")
+    if not role:
+        return None
+    role = str(role).strip().lower()
+    if role in ("user", "human"):
+        return "user"
+    if role in ("assistant", "ai", "bot", "model"):
+        return "assistant"
+    if role == "system":
+        # System messages shouldn't start new prompts; render as assistant.
+        return "assistant"
+    return None
+
+
+def _cursor_message_text(msg):
+    value = None
+    for key in ("content", "text", "message", "markdown", "value", "parts"):
+        if key in msg:
+            value = msg.get(key)
+            break
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        # Common nested shapes: {"text": "..."} or {"content": "..."}
+        for key in ("text", "content", "value", "markdown"):
+            inner = value.get(key)
+            if isinstance(inner, str):
+                return inner
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, str):
+                parts.append(item)
+                continue
+            if isinstance(item, dict):
+                for key in ("text", "content", "value", "markdown"):
+                    inner = item.get(key)
+                    if isinstance(inner, str):
+                        parts.append(inner)
+                        break
+        joined = "\n".join(p for p in parts if p)
+        return joined or None
+    return str(value)
+
+
+def _cursor_message_timestamp(msg):
+    for key in ("timestamp", "createdAt", "created_at", "time", "date", "ts"):
+        if key in msg:
+            dt = _coerce_datetime(msg.get(key))
+            if dt is not None:
+                return dt
+    return None
+
+
+def _parse_cursor_export(data, filepath):
+    messages = _extract_cursor_messages(data)
+    if not messages or not isinstance(messages, list):
+        return None
+
+    # Quick "looks like" check to avoid mis-detecting arbitrary JSON.
+    sample = [m for m in messages[:5] if isinstance(m, dict)]
+    if not sample:
+        return None
+    if not any(
+        any(k in m for k in ("role", "author", "speaker", "type")) for m in sample
+    ):
+        return None
+    if not any(
+        any(k in m for k in ("content", "text", "message", "parts")) for m in sample
+    ):
+        return None
+
+    session_dt = None
+    if isinstance(data, dict):
+        for key in ("createdAt", "created_at", "created", "timestamp"):
+            session_dt = _coerce_datetime(data.get(key))
+            if session_dt is not None:
+                break
+    if session_dt is None:
+        session_dt = datetime.fromtimestamp(filepath.stat().st_mtime, tz=timezone.utc)
+
+    loglines = []
+    for idx, msg in enumerate(messages):
+        if not isinstance(msg, dict):
+            continue
+        role = _cursor_message_role(msg)
+        if role not in ("user", "assistant"):
+            continue
+        text = _cursor_message_text(msg)
+        if not text:
+            continue
+
+        dt = _cursor_message_timestamp(msg) or (session_dt + timedelta(seconds=idx))
+        ts = _format_timestamp(dt)
+
+        if role == "user":
+            message = {"role": "user", "content": text}
+        else:
+            message = {"role": "assistant", "content": [{"type": "text", "text": text}]}
+
+        loglines.append({"type": role, "timestamp": ts, "message": message})
+
+    return {"loglines": loglines}
 
 
 def _is_codex_cli_format(filepath):

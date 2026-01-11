@@ -1036,6 +1036,24 @@ class TestParseSessionFile:
         assert "timestamp" in first
         assert "message" in first
 
+    def test_parses_cursor_export_json_format(self):
+        """Test that Cursor export JSON is converted to the standard loglines format."""
+        fixture_path = Path(__file__).parent / "sample_cursor_export.json"
+        result = parse_session_file(fixture_path)
+
+        assert "loglines" in result
+        assert len(result["loglines"]) == 4
+
+        first = result["loglines"][0]
+        assert first["type"] == "user"
+        assert first["message"]["role"] == "user"
+        assert "Cursor" in first["message"]["content"]
+
+        assistant = next(e for e in result["loglines"] if e["type"] == "assistant")
+        assert assistant["message"]["role"] == "assistant"
+        assert isinstance(assistant["message"]["content"], list)
+        assert assistant["message"]["content"][0]["type"] == "text"
+
     def test_parses_jsonl_format(self):
         """Test that JSONL format is parsed and converted to standard format."""
         fixture_path = Path(__file__).parent / "sample_session.jsonl"
@@ -1077,6 +1095,22 @@ class TestParseSessionFile:
         index_html = (output_dir / "index.html").read_text(encoding="utf-8")
         assert "hello world" in index_html.lower()
         assert index_html == snapshot_html
+
+    def test_cursor_export_generates_html(self, tmp_path):
+        """Test that Cursor export JSON files can be converted to HTML."""
+        fixture_path = Path(__file__).parent / "sample_cursor_export.json"
+        output_dir = tmp_path / "output"
+        output_dir.mkdir()
+
+        generate_html(fixture_path, output_dir)
+
+        index_html = (output_dir / "index.html").read_text(encoding="utf-8")
+        assert "2 prompts" in index_html or "2 prompt" in index_html
+
+        page_html = (output_dir / "page-001.html").read_text(encoding="utf-8")
+        assert "print('hi')" in page_html
+        # Ensure code fences are rendered as HTML (not escaped)
+        assert "<pre><code" in page_html
 
 
 class TestGetSessionSummary:
