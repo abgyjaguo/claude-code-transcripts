@@ -1065,6 +1065,32 @@ class TestParseSessionFile:
         assert isinstance(assistant["message"]["content"], list)
         assert assistant["message"]["content"][0]["type"] == "text"
 
+    def test_parses_windsurf_export_json_format(self):
+        """Test that Windsurf export JSON is converted to normalized loglines."""
+        fixture_path = Path(__file__).parent / "sample_windsurf_export.json"
+        result = parse_session_file(fixture_path)
+
+        assert "loglines" in result
+        assert [e["type"] for e in result["loglines"]] == ["user", "assistant"]
+
+        user_entry, assistant_entry = result["loglines"]
+        assert user_entry["message"]["role"] == "user"
+        assert "add(a, b)" in user_entry["message"]["content"]
+
+        assert assistant_entry["message"]["role"] == "assistant"
+        assert isinstance(assistant_entry["message"]["content"], list)
+        assert assistant_entry["message"]["content"][0]["type"] == "text"
+        assert "```python" in assistant_entry["message"]["content"][0]["text"]
+
+    def test_windsurf_export_generates_html(self, output_dir):
+        """Test that Windsurf export JSON can be converted to HTML."""
+        fixture_path = Path(__file__).parent / "sample_windsurf_export.json"
+        generate_html(fixture_path, output_dir)
+
+        index_html = (output_dir / "index.html").read_text(encoding="utf-8")
+        assert "add(a, b)" in index_html
+        assert "<code" in index_html
+
     def test_parses_jsonl_format(self):
         """Test that JSONL format is parsed and converted to standard format."""
         fixture_path = Path(__file__).parent / "sample_session.jsonl"

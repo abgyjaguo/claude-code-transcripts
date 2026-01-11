@@ -1,0 +1,23 @@
+{
+  "app": "Windsurf",
+  "exported_at": "2026-01-01T12:00:00.000Z",
+  "conversation": {
+    "id": "conv_123",
+    "title": "Sample Windsurf Export",
+    "messages": [
+      {
+        "id": "msg_1",
+        "role": "user",
+        "createdAt": "2026-01-01T12:00:00.000Z",
+        "content": "Write a Python function `add(a, b)`."
+      },
+      {
+        "id": "msg_2",
+        "role": "assistant",
+        "createdAt": "2026-01-01T12:00:05.000Z",
+        "content": "Sure.\\n\\n```python\\ndef add(a, b):\\n    return a + b\\n```"
+      }
+    ]
+  }
+}
+
