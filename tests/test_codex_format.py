@@ -124,6 +124,34 @@ class TestCodexCliMessageParsing:
         finally:
             temp_file.unlink()
 
+    def test_parses_reasoning_summary(self):
+        """Test that Codex reasoning summaries are preserved as thinking blocks."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(
+                '{"timestamp":"2025-12-28T12:18:35.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"**Step A**\\n\\nDo A."},{"type":"summary_text","text":"**Step B**\\n\\nDo B."}],"encrypted_content":"SHOULD_NOT_APPEAR"}}\n'
+            )
+            temp_file = Path(f.name)
+
+        try:
+            data = parse_session_file(temp_file)
+            loglines = data["loglines"]
+            assert len(loglines) == 1
+
+            entry = loglines[0]
+            assert entry["type"] == "assistant"
+            assert entry["message"]["role"] == "assistant"
+            assert isinstance(entry["message"]["content"], list)
+
+            thinking = entry["message"]["content"][0]
+            assert thinking["type"] == "thinking"
+            assert (
+                thinking["thinking"]
+                == "**Step A**\n\nDo A.\n\n**Step B**\n\nDo B."
+            )
+            assert "SHOULD_NOT_APPEAR" not in thinking["thinking"]
+        finally:
+            temp_file.unlink()
+
     def test_skips_non_message_records(self):
         """Test that non-message records (session_meta, turn_context, etc.) are skipped."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
@@ -216,6 +244,33 @@ class TestCodexCliToolCalls:
 
 class TestCodexCliHtmlGeneration:
     """Integration test for generating HTML from Codex CLI files."""
+
+    def test_generates_html_includes_reasoning_summary(self):
+        """Test that Codex reasoning summaries render in generated HTML."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write(
+                '{"timestamp":"2025-01-01T00:00:00.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Hello"}]}}\n'
+            )
+            f.write(
+                '{"timestamp":"2025-01-01T00:00:01.000Z","type":"response_item","payload":{"type":"reasoning","summary":[{"type":"summary_text","text":"**Plan**\\n\\nDo X."}]}}\n'
+            )
+            f.write(
+                '{"timestamp":"2025-01-01T00:00:02.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"text","text":"Hi"}]}}\n'
+            )
+            temp_file = Path(f.name)
+
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                output_dir = Path(tmpdir)
+                generate_html(temp_file, output_dir)
+
+                page_html = (output_dir / "page-001.html").read_text(
+                    encoding="utf-8"
+                )
+                assert "Plan" in page_html
+                assert "Do X." in page_html
+        finally:
+            temp_file.unlink()
 
     def test_generates_html_from_codex_file(self):
         """Test that HTML can be generated from a Codex CLI session."""
